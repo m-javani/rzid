@@ -14,9 +14,6 @@ pub enum Error {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("TLS error: {0}")]
-    Tls(String),
-
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -28,7 +25,6 @@ impl IntoResponse for Error {
         let (status, message) = match &self {
             Error::Config(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             Error::Io(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            Error::Tls(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             Error::Json(_) => (StatusCode::BAD_REQUEST, self.to_string()),
         };
 

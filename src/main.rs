@@ -3,7 +3,6 @@ mod config;
 mod error;
 mod metrics;
 mod state;
-mod tls;
 
 use axum_server::Handle;
 use clap::Parser;
@@ -13,7 +12,6 @@ use crate::config::Config;
 use crate::error::Result;
 use crate::metrics::init_global_metrics;
 use crate::state::AppState;
-use crate::tls::setup_tls;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -31,8 +29,6 @@ async fn main() -> Result<()> {
     info!(
         addr = %cfg.addr,
         port = cfg.port,
-        tls = cfg.tls_enabled,
-        mtls = cfg.mtls_enabled,
         state_file = %cfg.state_file.display(),
         "starting RZID"
     );
@@ -69,22 +65,11 @@ async fn main() -> Result<()> {
 
     let addr = cfg.socket_addr()?;
 
-    match setup_tls(&cfg).await? {
-        Some(rustls_config) => {
-            info!(%addr, "listening with TLS");
-            axum_server::bind_rustls(addr, rustls_config)
-                .handle(handle)
-                .serve(app.into_make_service())
-                .await?;
-        }
-        None => {
-            info!(%addr, "listening (plain HTTP)");
-            axum_server::bind(addr)
-                .handle(handle)
-                .serve(app.into_make_service())
-                .await?;
-        }
-    }
+    info!(%addr, "listening (plain HTTP)");
+    axum_server::bind(addr)
+        .handle(handle)
+        .serve(app.into_make_service())
+        .await?;
 
     info!("server stopped");
     Ok(())
