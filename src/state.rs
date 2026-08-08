@@ -346,6 +346,10 @@ impl AppState {
     }
 
     pub async fn persist(&self) -> Result<()> {
+        // We are about to attempt to persist the current state.
+        // Clear dirty BEFORE taking the snapshot.
+        *self.dirty.write().await = false;
+
         let components = self.components.read().await;
         let segments = self.segments.read().await;
 
@@ -355,8 +359,6 @@ impl AppState {
         };
 
         atomic_write(&self.state_file, &snapshot).await?;
-
-        *self.dirty.write().await = false;
 
         let metrics = get_global_metrics();
         metrics.json_write_total.inc();
