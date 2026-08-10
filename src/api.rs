@@ -1,76 +1,102 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
-    http::{StatusCode, header},
-    middleware,
+    body::Body,
+    extract::{MatchedPath, Path, State},
+    http::{Request, StatusCode, header},
+    middleware::{self, Next},
     response::IntoResponse,
     routing::{get, post},
 };
-use axum::{
-    body::Body,
-    extract::MatchedPath,
-    http::{Request, Response},
-    middleware::Next,
-};
 use prometheus::Encoder;
 use serde::{Deserialize, Serialize};
-use std::time::Instant;
 use tracing::info;
 
 use crate::metrics::get_global_metrics;
-use crate::state::AppState;
+use crate::state::{AppState, VersionManifest};
 
 // =============================================================================
 // Router
 // =============================================================================
 
+/// Builds the complete RzID HTTP API.
 pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
-        // Operational
+        // ---------------------------------------------------------------------
+        // Operational endpoints
+        // ---------------------------------------------------------------------
         .route("/health", get(health_handler))
         .route("/metrics", get(metrics_handler))
-        // Registration
+        // ---------------------------------------------------------------------
+        // Registration / heartbeat
+        // ---------------------------------------------------------------------
         .route("/register", post(register_handler))
-        // Segment ownership (leader → RZID)
-        .route(
-            "/shards/{shard_id}/segments/version",
-            get(shard_segments_version_handler),
-        )
+        // ---------------------------------------------------------------------
+        // Version manifest
+        //
+        // Routers call this once and receive all dataset versions. They then
+        // decide locally which data endpoints need to be fetched.
+        // ---------------------------------------------------------------------
+        .route("/versions", get(versions_handler))
+        // ---------------------------------------------------------------------
+        // Segment ownership
+        //
+        // A shard/leader publishes its authoritative segment list here.
+        // ---------------------------------------------------------------------
         .route("/shards/{shard_id}/segments", post(update_segments_handler))
-        // Edge Router queries
-        .route("/zones/routers", get(zones_routers_handler))
+        // ---------------------------------------------------------------------
+        // Edge Router views
+        //
+        // Edge routers need:
+        //   1. routers in each zone
+        //   2. all segments in each zone
+        // ---------------------------------------------------------------------
+        .route("/zones/{zone_id}/routers", get(zone_routers_handler))
         .route("/zones/{zone_id}/segments", get(zone_segments_handler))
-        .route(
-            "/zones/{zone_id}/segments/version",
-            get(zone_segments_version_handler),
-        )
-        // Zone Router queries
-        .route("/zones/{zone_id}", get(zone_handler))
-        .route("/zones/{zone_id}/version", get(zone_version_handler))
-        // RzBridge queries
+        // ---------------------------------------------------------------------
+        // Zone Router views
+        //
+        // Zone routers need:
+        //   1. shards in their zone + all bridge instances
+        //   2. segments owned by each shard
+        // ---------------------------------------------------------------------
+        .route("/zones/{zone_id}/shards", get(zone_shards_handler))
+        .route("/shards/{shard_id}/segments", get(shard_segments_handler))
+        // ---------------------------------------------------------------------
+        // RzBridge view
+        //
+        // A bridge only needs the nodes belonging to its shard.
+        // ---------------------------------------------------------------------
         .route("/shards/{shard_id}/nodes", get(shard_nodes_handler))
         .with_state(state)
         .layer(middleware::from_fn(track_metrics))
 }
 
 // =============================================================================
-// Operational handlers
+// Operational
 // =============================================================================
 
+/// Returns a simple health response.
 async fn health_handler() -> &'static str {
     "OK"
 }
 
+/// Returns Prometheus metrics.
 async fn metrics_handler() -> impl IntoResponse {
     let metrics = get_global_metrics();
     let encoder = prometheus::TextEncoder::new();
     let metric_families = metrics.registry.gather();
 
     let mut buffer = Vec::new();
-    if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
-        tracing::error!(error = %e, "failed to encode prometheus metrics");
+
+    if let Err(error) = encoder.encode(&metric_families, &mut buffer) {
+        tracing::error!(
+            error = %error,
+            "failed to encode metrics"
+        );
+
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             "failed to encode metrics",
@@ -90,14 +116,23 @@ async fn metrics_handler() -> impl IntoResponse {
 // Registration
 // =============================================================================
 
+/// Describes a component registration or heartbeat.
 #[derive(Debug, Deserialize)]
 struct RegisterRequest {
-    kind: String, // "router" | "bridge" | "node"
+    /// "router", "bridge", or "node".
+    kind: String,
+
+    /// Component ID.
     id: String,
+
+    /// Zone containing the component.
     zone: String,
+
+    /// Required for bridges and nodes.
     shard: Option<String>,
 }
 
+/// Registers a router, bridge, or node.
 async fn register_handler(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RegisterRequest>,
@@ -107,73 +142,104 @@ async fn register_handler(
             state
                 .register_router(req.id.clone(), req.zone.clone())
                 .await;
-            info!(id = %req.id, zone = %req.zone, "registered router");
+
+            info!(
+                id = %req.id,
+                zone = %req.zone,
+                "registered router"
+            );
+
             StatusCode::OK.into_response()
         }
+
         "bridge" => {
             let Some(shard) = req.shard else {
                 return (
                     StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": "shard is required for bridge"})),
+                    Json(serde_json::json!({
+                        "error": "shard is required for bridge"
+                    })),
                 )
                     .into_response();
             };
+
             state
                 .register_bridge(req.id.clone(), shard.clone(), req.zone.clone())
                 .await;
-            info!(id = %req.id, shard = %shard, zone = %req.zone, "registered bridge");
+
+            info!(
+                id = %req.id,
+                shard = %shard,
+                zone = %req.zone,
+                "registered bridge"
+            );
+
             StatusCode::OK.into_response()
         }
+
         "node" => {
             let Some(shard) = req.shard else {
                 return (
                     StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": "shard is required for node"})),
+                    Json(serde_json::json!({
+                        "error": "shard is required for node"
+                    })),
                 )
                     .into_response();
             };
+
             state
                 .register_node(req.id.clone(), shard.clone(), req.zone.clone())
                 .await;
-            info!(id = %req.id, shard = %shard, zone = %req.zone, "registered node");
+
+            info!(
+                id = %req.id,
+                shard = %shard,
+                zone = %req.zone,
+                "registered node"
+            );
+
             StatusCode::OK.into_response()
         }
+
         other => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": format!("unknown kind: {other}")})),
+            Json(serde_json::json!({
+                "error": format!(
+                    "unknown registration kind: {other}"
+                )
+            })),
         )
             .into_response(),
     }
 }
 
 // =============================================================================
+// Version manifest
+// =============================================================================
+
+/// Returns every dataset version in one request.
+async fn versions_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let manifest: VersionManifest = state.version_manifest().await;
+
+    Json(manifest)
+}
+
+// =============================================================================
 // Segment ownership
 // =============================================================================
 
-#[derive(Debug, Serialize)]
-struct ChecksumResponse {
-    checksum: String,
-}
-
-async fn shard_segments_version_handler(
-    State(state): State<Arc<AppState>>,
-    Path(shard_id): Path<String>,
-) -> impl IntoResponse {
-    match state.segment_checksum(&shard_id).await {
-        Some(checksum) => Json(ChecksumResponse { checksum }).into_response(),
-        None => Json(ChecksumResponse {
-            checksum: String::new(),
-        })
-        .into_response(),
-    }
-}
-
+/// Describes a shard's segment update.
 #[derive(Debug, Deserialize)]
 struct UpdateSegmentsRequest {
+    /// Zone containing the shard.
     zone: String,
+
+    /// Complete authoritative segment set for the shard.
     segments: Vec<String>,
 }
 
+/// Replaces the complete segment ownership of a shard.
 async fn update_segments_handler(
     State(state): State<Arc<AppState>>,
     Path(shard_id): Path<String>,
@@ -184,114 +250,157 @@ async fn update_segments_handler(
         .await;
 
     if changed {
-        info!(shard = %shard_id, "segment list updated");
+        info!(
+            shard = %shard_id,
+            "shard segment ownership updated"
+        );
     }
 
     StatusCode::OK
 }
 
 // =============================================================================
-// Edge Router queries
+// Edge Router
 // =============================================================================
 
+/// Returns all routers belonging to one zone together with its version.
 #[derive(Debug, Serialize)]
-struct ZonesRoutersResponse {
-    zones: std::collections::HashMap<String, ZoneRouters>,
-}
-
-#[derive(Debug, Serialize)]
-struct ZoneRouters {
+struct ZoneRoutersResponse {
+    version: u64,
     routers: Vec<String>,
 }
 
-async fn zones_routers_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let map = state.zones_routers().await;
-    let zones = map
-        .into_iter()
-        .map(|(zone, routers)| (zone, ZoneRouters { routers }))
-        .collect();
-    Json(ZonesRoutersResponse { zones })
+/// Returns the routers used by an edge router for a zone.
+async fn zone_routers_handler(
+    State(state): State<Arc<AppState>>,
+    Path(zone_id): Path<String>,
+) -> impl IntoResponse {
+    let (version, routers) = state.zone_routers(&zone_id).await;
+
+    Json(ZoneRoutersResponse { version, routers })
 }
 
+/// Returns all unique segments currently owned in a zone.
 #[derive(Debug, Serialize)]
-struct SegmentsResponse {
+struct ZoneSegmentsResponse {
+    version: u64,
     segments: Vec<String>,
 }
 
+/// Returns the complete zone segment set.
 async fn zone_segments_handler(
     State(state): State<Arc<AppState>>,
     Path(zone_id): Path<String>,
 ) -> impl IntoResponse {
-    let (segments, _) = state.zone_segments(&zone_id).await;
-    Json(SegmentsResponse { segments })
-}
+    let (version, segments) = state.zone_segments(&zone_id).await;
 
-async fn zone_segments_version_handler(
-    State(state): State<Arc<AppState>>,
-    Path(zone_id): Path<String>,
-) -> impl IntoResponse {
-    let (_, checksum) = state.zone_segments(&zone_id).await;
-    Json(ChecksumResponse { checksum })
+    Json(ZoneSegmentsResponse { version, segments })
 }
 
 // =============================================================================
-// Zone Router queries
+// Zone Router
 // =============================================================================
 
+/// Describes all bridges serving one shard.
 #[derive(Debug, Serialize)]
-struct ZoneResponse {
-    shards: std::collections::HashMap<String, ShardBridge>,
-    version: String,
+struct ShardBridges {
+    bridges: Vec<String>,
 }
 
+/// Returns all shards in a zone and all bridge instances serving each shard.
 #[derive(Debug, Serialize)]
-struct ShardBridge {
-    bridge_id: String,
+struct ZoneShardsResponse {
+    version: u64,
+    shards: std::collections::HashMap<String, ShardBridges>,
 }
 
-async fn zone_handler(
+/// Returns the shard/bridge topology for a zone.
+async fn zone_shards_handler(
     State(state): State<Arc<AppState>>,
     Path(zone_id): Path<String>,
 ) -> impl IntoResponse {
-    let (shards_map, version) = state.zone_shards(&zone_id).await;
-    let shards = shards_map
+    let (version, shards) = state.zone_shards(&zone_id).await;
+
+    let shards = shards
         .into_iter()
-        .map(|(shard, bridge_id)| (shard, ShardBridge { bridge_id }))
+        .map(|(shard_id, bridges)| (shard_id, ShardBridges { bridges }))
         .collect();
-    Json(ZoneResponse { shards, version })
+
+    Json(ZoneShardsResponse { version, shards })
 }
 
-async fn zone_version_handler(
+/// Returns the complete segment set owned by one shard.
+#[derive(Debug, Serialize)]
+struct ShardSegmentsResponse {
+    version: u64,
+    zone: String,
+    segments: Vec<String>,
+}
+
+/// Returns one shard's authoritative segments.
+async fn shard_segments_handler(
     State(state): State<Arc<AppState>>,
-    Path(zone_id): Path<String>,
+    Path(shard_id): Path<String>,
 ) -> impl IntoResponse {
-    let (_, checksum) = state.zone_shards(&zone_id).await;
-    Json(ChecksumResponse { checksum })
+    match state.shard_segments(&shard_id).await {
+        Some((version, zone, segments)) => Json(ShardSegmentsResponse {
+            version,
+            zone,
+            segments,
+        })
+        .into_response(),
+
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": "unknown shard"
+            })),
+        )
+            .into_response(),
+    }
 }
 
 // =============================================================================
-// RzBridge queries
+// RzBridge
 // =============================================================================
 
+/// Returns all nodes belonging to a shard.
 #[derive(Debug, Serialize)]
 struct NodesResponse {
+    version: u64,
     nodes: Vec<String>,
 }
 
+/// Returns the node membership for a shard.
 async fn shard_nodes_handler(
     State(state): State<Arc<AppState>>,
     Path(shard_id): Path<String>,
 ) -> impl IntoResponse {
-    let nodes = state.shard_nodes(&shard_id).await;
-    Json(NodesResponse { nodes })
+    match state.shard_nodes(&shard_id).await {
+        Some((version, nodes)) => Json(NodesResponse { version, nodes }).into_response(),
+
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": "unknown shard"
+            })),
+        )
+            .into_response(),
+    }
 }
 
-async fn track_metrics(req: Request<Body>, next: Next) -> Response<Body> {
+// =============================================================================
+// Request metrics
+// =============================================================================
+
+/// Records request count, latency, and HTTP errors.
+async fn track_metrics(req: Request<Body>, next: Next) -> axum::response::Response {
     let start = Instant::now();
+
     let path = req
         .extensions()
         .get::<MatchedPath>()
-        .map(|m| m.as_str().to_owned())
+        .map(|matched| matched.as_str().to_owned())
         .unwrap_or_else(|| req.uri().path().to_owned());
 
     let response = next.run(req).await;
@@ -307,14 +416,15 @@ async fn track_metrics(req: Request<Body>, next: Next) -> Response<Body> {
         .observe(start.elapsed().as_secs_f64());
 
     if status >= 400 {
-        let error = if status >= 500 {
+        let error_type = if status >= 500 {
             "server_error"
         } else {
             "client_error"
         };
+
         metrics
             .request_errors_total
-            .with_label_values(&[&path, error])
+            .with_label_values(&[&path, error_type])
             .inc();
     }
 
