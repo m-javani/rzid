@@ -1,0 +1,51 @@
+# Git
+.git/
+.gitignore
+
+# Build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Documentation
+docs/
+*.md
+README.md
+
+# Test files
+tests/
+**/*_test.rs
+
+# Docker files (don't copy these into the image)
+Dockerfile*
+.dockerignore
+
+# Cargo lock files (if you're copying source for building inside Docker)
+# But if you're using pre-built binary, this doesn't matter much
+Cargo.lock
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.*
