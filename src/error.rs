@@ -7,7 +7,7 @@ use serde_json::json;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum Error {
+pub enum RzError {
     #[error("configuration error: {0}")]
     Config(String),
 
@@ -18,14 +18,14 @@ pub enum Error {
     Json(#[from] serde_json::Error),
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, RzError>;
 
-impl IntoResponse for Error {
+impl IntoResponse for RzError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            Error::Config(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            Error::Io(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            Error::Json(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            RzError::Config(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            RzError::Io(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            RzError::Json(_) => (StatusCode::BAD_REQUEST, self.to_string()),
         };
 
         let body = Json(json!({

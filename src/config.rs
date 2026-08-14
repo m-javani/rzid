@@ -2,7 +2,7 @@ use clap::Parser;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use crate::error::{Error, Result};
+use crate::error::{Result, RzError};
 
 /// RZID - Roomzin Identity Directory
 #[derive(Debug, Clone, Parser)]
@@ -31,13 +31,17 @@ pub struct Config {
     /// Timeout in seconds after which a component is deregistered if no heartbeat is received
     #[arg(long, default_value_t = 60)]
     pub heartbeat_timeout_secs: u64,
+
+    /// Path to the codecs YAML configuration file
+    #[arg(long, default_value = "codecs.yml")]
+    pub codecs_path: PathBuf,
 }
 
 impl Config {
     pub fn socket_addr(&self) -> Result<SocketAddr> {
         let addr = format!("{}:{}", self.addr, self.port);
         addr.parse()
-            .map_err(|e| Error::Config(format!("invalid listen address '{addr}': {e}")))
+            .map_err(|e| RzError::Config(format!("invalid listen address '{addr}': {e}")))
     }
 
     /// Ensure required directories exist
@@ -46,6 +50,31 @@ impl Config {
             if !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)?;
             }
+        }
+
+        if let Some(parent) = self.codecs_path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate that the codecs file exists
+    pub fn validate_codecs_file(&self) -> Result<()> {
+        if !self.codecs_path.exists() {
+            return Err(RzError::Config(format!(
+                "Codecs file not found: {}",
+                self.codecs_path.display()
+            )));
+        }
+
+        if !self.codecs_path.is_file() {
+            return Err(RzError::Config(format!(
+                "Codecs path is not a file: {}",
+                self.codecs_path.display()
+            )));
         }
 
         Ok(())

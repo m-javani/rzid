@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-use crate::error::Result;
 use crate::metrics::get_global_metrics;
+use crate::{codecs::Codecs, error::Result};
 
 // =============================================================================
 // Public ID types
@@ -241,6 +241,8 @@ pub struct AppState {
 
     /// Protects persistence dirty-state transitions.
     dirty: RwLock<bool>,
+
+    pub codecs: Codecs,
 }
 
 /// Contains all runtime state protected by AppState::data.
@@ -277,6 +279,7 @@ impl AppState {
         state_file: impl Into<PathBuf>,
         heartbeat_timeout_secs: u64,
         buffer_ms: u64,
+        codecs: Codecs,
     ) -> Result<Arc<Self>> {
         let state_file = state_file.into();
 
@@ -344,14 +347,11 @@ impl AppState {
 
         Ok(Arc::new(Self {
             data: RwLock::new(data),
-
             heartbeat_timeout: Duration::from_secs(heartbeat_timeout_secs),
-
             state_file,
-
             buffer_ms,
-
             dirty: RwLock::new(false),
+            codecs,
         }))
     }
 }

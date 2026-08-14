@@ -1,4 +1,5 @@
 mod api;
+mod codecs;
 mod config;
 mod error;
 mod metrics;
@@ -8,6 +9,7 @@ use axum_server::Handle;
 use clap::Parser;
 use tracing::info;
 
+use crate::codecs::load_codecs_yaml;
 use crate::config::Config;
 use crate::error::Result;
 use crate::metrics::init_global_metrics;
@@ -35,11 +37,18 @@ async fn main() -> Result<()> {
 
     init_global_metrics();
 
+    // Validate codecs file exists
+    cfg.validate_codecs_file()?;
+
+    let codecs = load_codecs_yaml(&cfg.codecs_path)
+        .map_err(|e| crate::error::RzError::Config(format!("Failed to load codecs: {}", e)))?;
+
     // Create state (loads from disk if present)
     let state = AppState::new(
         cfg.state_file.clone(),
         cfg.heartbeat_timeout_secs,
         cfg.buffer_ms,
+        codecs,
     )
     .await?;
 

@@ -30,6 +30,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/health", get(health_handler))
         .route("/metrics", get(metrics_handler))
         // ---------------------------------------------------------------------
+        // Codecs configuration
+        // ---------------------------------------------------------------------
+        .route("/codecs", get(codecs_handler))
+        // ---------------------------------------------------------------------
         // Registration / heartbeat
         // ---------------------------------------------------------------------
         .route("/register", post(register_handler))
@@ -110,6 +114,24 @@ async fn metrics_handler() -> impl IntoResponse {
         buffer,
     )
         .into_response()
+}
+
+// =============================================================================
+// Codecs
+// =============================================================================
+#[derive(Serialize)]
+struct CodecsResponse {
+    rate_features: Vec<String>,
+    hash: u64,
+}
+
+async fn codecs_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let codecs = &state.codecs;
+
+    Json(CodecsResponse {
+        rate_features: codecs.rate_features.clone(),
+        hash: codecs.hash,
+    })
 }
 
 // =============================================================================
