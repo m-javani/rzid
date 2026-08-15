@@ -12,7 +12,6 @@ use axum::{
 };
 use prometheus::Encoder;
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use crate::metrics::get_global_metrics;
 use crate::state::{AppState, VersionManifest};
@@ -165,12 +164,6 @@ async fn register_handler(
                 .register_router(req.id.clone(), req.zone.clone())
                 .await;
 
-            info!(
-                id = %req.id,
-                zone = %req.zone,
-                "registered router"
-            );
-
             StatusCode::OK.into_response()
         }
 
@@ -189,13 +182,6 @@ async fn register_handler(
                 .register_bridge(req.id.clone(), shard.clone(), req.zone.clone())
                 .await;
 
-            info!(
-                id = %req.id,
-                shard = %shard,
-                zone = %req.zone,
-                "registered bridge"
-            );
-
             StatusCode::OK.into_response()
         }
 
@@ -213,13 +199,6 @@ async fn register_handler(
             state
                 .register_node(req.id.clone(), shard.clone(), req.zone.clone())
                 .await;
-
-            info!(
-                id = %req.id,
-                shard = %shard,
-                zone = %req.zone,
-                "registered node"
-            );
 
             StatusCode::OK.into_response()
         }
@@ -267,16 +246,9 @@ async fn update_segments_handler(
     Path(shard_id): Path<String>,
     Json(req): Json<UpdateSegmentsRequest>,
 ) -> impl IntoResponse {
-    let changed = state
+    let _ = state
         .update_segments(shard_id.clone(), req.zone, req.segments)
         .await;
-
-    if changed {
-        info!(
-            shard = %shard_id,
-            "shard segment ownership updated"
-        );
-    }
 
     StatusCode::OK
 }

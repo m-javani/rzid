@@ -404,6 +404,12 @@ impl AppState {
 
             drop(data);
             self.mark_dirty().await;
+
+            info!(
+                id = %id,
+                zone = %zone_id,
+                "registered router"
+            );
         }
     }
 
@@ -421,7 +427,7 @@ impl AppState {
         };
 
         data.components.bridges.insert(
-            id,
+            id.clone(),
             BridgeInfo {
                 shard_id: shard_id.clone(),
                 zone_id: zone_id.clone(),
@@ -450,6 +456,13 @@ impl AppState {
 
             drop(data);
             self.mark_dirty().await;
+
+            info!(
+                id = %id,
+                shard = %shard_id,
+                zone = %zone_id,
+                "registered bridge"
+            );
         }
     }
 
@@ -467,10 +480,10 @@ impl AppState {
         };
 
         data.components.nodes.insert(
-            id,
+            id.clone(),
             NodeInfo {
                 shard_id: shard_id.clone(),
-                zone_id,
+                zone_id: zone_id.clone(),
                 last_seen_ms: now,
             },
         );
@@ -496,6 +509,13 @@ impl AppState {
 
             drop(data);
             self.mark_dirty().await;
+
+            info!(
+                id = %id,
+                shard = %shard_id,
+                zone = %zone_id,
+                "registered node"
+            );
         }
     }
 }
@@ -543,6 +563,10 @@ impl AppState {
 
         if changed {
             changed_zones.insert(zone_id.clone());
+            info!(
+                shard = %shard_id,
+                "shard segments updated"
+            );
         }
 
         // Replace authoritative shard ownership.
