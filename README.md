@@ -1,6 +1,6 @@
 # RZID - Roomzin Identity Directory
 
-RZID is the control plane for the Roomzin platform. It maintains the global view of component locations and topology relationships.
+RZID is the control plane for the [Roomzin platform](https://m-javani.github.io/roomzin-doc/). It maintains the global view of component locations and topology relationships.
 
 ## Overview
 
@@ -171,3 +171,38 @@ RZID serves plain HTTP and does not implement TLS directly. TLS/mTLS should be h
 - Works with any infrastructure setup
 - Simplifies certificate management
 - Avoids hostname verification complexities
+
+
+---
+
+## Contributing
+
+Contributions are welcome!
+
+Please open an issue before proposing large changes. All contributions are subject to the BUSL-1.1 License terms.
+
+---
+
+## License
+
+This project is licensed under the [BUSL-1.1 License](LICENSE).
+
+**Note:** RzProxy is designed to communicate with Roomzin Server, which requires a valid Roomzin license.
+
+---
+
+## Support
+
+- **Community Q&A**: [GitHub Discussions](https://github.com/m-javani/roomzin-doc/discussions)
+- **Issues**: [GitHub Issues](https://github.com/m-javani/rzproxy/issues)
+
+---
+
+## Related Repositories
+
+- [Roomzin](https://m-javani.github.io/roomzin-doc/) - Roomzin Documents
+- [RzRouter](https://github.com/m-javani/rzid) - Routing fabric
+- [RzID](https://github.com/m-javani/rzid) - Roomzin Service Registry
+- [RzProxy](https://github.com/m-javani/rzproxy) - HTTP/JSON proxy
+- [Roomzin Quickstart](https://github.com/m-javani/roomzin-quickstart) — Local Docker cluster
+- [Roomzin Bench](https://github.com/m-javani/roomzin-bench) — Benchmarking tool

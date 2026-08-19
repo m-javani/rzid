@@ -1,0 +1,59 @@
+# // SPDX-License-Identifier: BUSL-1.1
+# // Copyright (c) 2026 M. Javani
+# //
+# // This file is part of rzid.
+# //
+# // Use of this software is governed by the Business Source License 1.1
+# // included in the LICENSE file in the root of this repository.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build binary
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Strip binary
+        run: strip --strip-all target/x86_64-unknown-linux-gnu/release/rzid
+
+      - name: Install UPX
+        run: sudo apt-get update && sudo apt-get install -y upx
+
+      - name: Compress with UPX
+        run: upx --best --lzma target/x86_64-unknown-linux-gnu/release/rzid
+
+      - name: Generate checksum
+        run: |
+          cd target/x86_64-unknown-linux-gnu/release
+          sha256sum rzid > rzid.sha256
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            target/x86_64-unknown-linux-gnu/release/rzid
+            target/x86_64-unknown-linux-gnu/release/rzid.sha256
+          generate_release_notes: true
+          name: ${{ github.ref_name }}

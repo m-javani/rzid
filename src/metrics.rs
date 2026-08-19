@@ -1,3 +1,11 @@
+// // SPDX-License-Identifier: BUSL-1.1
+// // Copyright (c) 2026 M. Javani
+// //
+// // This file is part of rzid.
+// //
+// // Use of this software is governed by the Business Source License 1.1
+// // included in the LICENSE file in the root of this repository.
+
 use prometheus::{
     Counter, CounterVec, Gauge, HistogramVec, Registry, histogram_opts,
     register_counter_vec_with_registry, register_counter_with_registry,
