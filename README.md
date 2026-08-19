@@ -194,7 +194,7 @@ This project is licensed under the [BUSL-1.1 License](LICENSE).
 ## Support
 
 - **Community Q&A**: [GitHub Discussions](https://github.com/m-javani/roomzin-doc/discussions)
-- **Issues**: [GitHub Issues](https://github.com/m-javani/rzproxy/issues)
+- **Issues**: [GitHub Issues](https://github.com/m-javani/rzid/issues)
 
 ---
 
