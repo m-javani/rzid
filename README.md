@@ -55,9 +55,6 @@ Response: 200 OK
 ### Segment Ownership (Cluster Leader → RZID)
 
 ```
-GET /shards/{shard_id}/segments/version
-Response: { "checksum": string }
-
 POST /shards/{shard_id}/segments
 Request: {
     "zone": string,
@@ -69,44 +66,58 @@ Response: 200 OK
 ### Edge Router Queries
 
 ```
-GET /zones/routers
+GET /zones/{zone_id}/routers
 Response: {
-    "zones": {
-        "zone-id": {
-            "routers": ["router-id-1", "router-id-2"]
-        }
-    }
+    "version": u64,
+    "routers": ["router-id-1", "router-id-2"]
 }
 
 GET /zones/{zone_id}/segments
-Response: { "segments": ["segment-1", "segment-2"] }
-
-GET /zones/{zone_id}/segments/version
-Response: { "checksum": string }
+Response: {
+    "version": u64,
+    "segments": ["segment-1", "segment-2"]
+}
 ```
 
 ### Zone Router Queries
 
 ```
-GET /zones/{zone_id}
+GET /zones/{zone_id}/shards
 Response: {
+    "version": u64,
     "shards": {
         "shard-id": {
-            "bridge_id": "bridge-id"
+            "bridges": ["bridge-id-1", "bridge-id-2"]
         }
-    },
-    "version": string
+    }
 }
 
-GET /zones/{zone_id}/version
-Response: { "checksum": string }
+GET /shards/{shard_id}/segments
+Response: {
+    "version": u64,
+    "zone": string,
+    "segments": ["segment-1", "segment-2"]
+}
 ```
 
 ### RzBridge Queries
 
 ```
 GET /shards/{shard_id}/nodes
-Response: { "nodes": ["node-id-1", "node-id-2", "node-id-3"] }
+Response: {
+    "version": u64,
+    "nodes": ["node-id-1", "node-id-2", "node-id-3"]
+}
+```
+
+### Codecs Configuration
+
+```
+GET /codecs
+Response: {
+    "rate_features": ["feature-1", "feature-2"],
+    "hash": u64
+}
 ```
 
 ### Operational
@@ -121,11 +132,12 @@ Response: Prometheus metrics
 
 ## Versioning Strategy
 
-- Each zone has a version (checksum) for its shard→bridge mapping
-- Each zone has a version (checksum) for its segment list
-- Each shard has a version (checksum) for its segment list
+- Each zone has a version (u64) for its shard→bridge mapping
+- Each zone has a version (u64) for its segment list
+- Each shard has a version (u64) for its segment list
+- Each shard has a version (u64) for its node list
 - No global version exists
-- Components fetch versions first, then fetch full data only when versions differ
+- Components fetch data directly and use version fields to detect changes
 
 ## Storage
 
@@ -145,6 +157,9 @@ RZID stores state in a JSON file with atomic writes (write to temp file, then re
 | `rzid_heartbeat_timeout_total` | Counter | Components deregistered due to missed heartbeats |
 | `rzid_segment_updates_total` | Counter | Segment updates by shard |
 | `rzid_segment_update_last_timestamp` | Gauge | Last segment update timestamp |
+| `rzid_json_write_total` | Counter | Total JSON file writes |
+| `rzid_json_write_errors_total` | Counter | Failed JSON file writes |
+| `rzid_last_persist_timestamp` | Gauge | Last successful persist timestamp |
 
 ## Configuration
 
@@ -155,6 +170,7 @@ RZID stores state in a JSON file with atomic writes (write to temp file, then re
 | `--addr` | `RZID_ADDR` | `0.0.0.0` | Listen address |
 | `-p, --port` | `RZID_PORT` | `8080` | Listen port |
 | `--state-file` | `RZID_STATE_FILE` | `state.json` | Path to state file |
+| `--codecs-path` | `RZID_CODECS_PATH` | `codecs.yml` | Path to codecs YAML configuration file |
 | `--heartbeat-timeout-secs` | `RZID_HEARTBEAT_TIMEOUT_SECS` | `60` | Heartbeat timeout in seconds |
 | `--buffer-ms` | `RZID_BUFFER_MS` | `1000` | Persistence buffer time in milliseconds |
 
@@ -171,7 +187,6 @@ RZID serves plain HTTP and does not implement TLS directly. TLS/mTLS should be h
 - Works with any infrastructure setup
 - Simplifies certificate management
 - Avoids hostname verification complexities
-
 
 ---
 
@@ -201,7 +216,7 @@ This project is licensed under the [BUSL-1.1 License](LICENSE).
 ## Related Repositories
 
 - [Roomzin](https://m-javani.github.io/roomzin-doc/) - Roomzin Documents
-- [RzRouter](https://github.com/m-javani/rzid) - Routing fabric
+- [RzRouter](https://github.com/m-javani/rzrouter) - Routing fabric
 - [RzID](https://github.com/m-javani/rzid) - Roomzin Service Registry
 - [RzProxy](https://github.com/m-javani/rzproxy) - HTTP/JSON proxy
 - [Roomzin Quickstart](https://github.com/m-javani/roomzin-quickstart) — Local Docker cluster
