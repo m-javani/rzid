@@ -13,6 +13,9 @@ mod error;
 mod metrics;
 mod state;
 
+#[cfg(test)]
+mod tests;
+
 use axum_server::Handle;
 use clap::Parser;
 use tracing::info;

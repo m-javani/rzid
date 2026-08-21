@@ -14,7 +14,7 @@ use std::path::Path;
 
 use crate::error::RzError;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Codecs {
     pub rate_features: Vec<String>,
     #[serde(skip)]
